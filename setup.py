@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(name='free_lie_algebra',
       version="0.01",
-      url='https://github.com/bottler/free_lie_algebra',
+      url='https://github.com/bottler/free_lie_algebra-py',
       author='Jeremy Reizenstein',
       license='MIT',
       zip_safe=True,
