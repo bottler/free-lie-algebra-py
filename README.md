@@ -7,7 +7,7 @@ Christophe Reutenauer.
 
 To install from github you should be able to do::
 
-    pip install --upgrade --no-cache git+git://github.com/bottler/free-lie-algebra-py
+    pip install --no-cache git+git://github.com/bottler/free-lie-algebra-py
 
 More likely you want to check out this repository and use the file `free_lie_algebra.py`.
 The top of the file has more information.
