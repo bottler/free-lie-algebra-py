@@ -832,9 +832,7 @@ def rho(a):
 #looks bad too, as we need to decompose words into all the shuffles (i.e. partitions) that make them.
 #pi1adjoint I do do directly though, because the decomposition into concatenations feels easier
 def pi1(a):
-    """the unique linear map on Elts s.t. log(x)=pi1(x) for any grouplike x
-    This is what Eric Gehrig and Matthias Kawski call $\pi_1'$ in their
-    'A Hopf-Algebraic Formula for Compositions of Noncommuting Flows' """
+    """the unique linear map on Elts s.t. log(x)=pi1(x) for any grouplike x"""
     assert isinstance(a,Elt), a
     #p58: pi_1=log(id)=log(epsilon+I)=log1p(I) [because epsilon is the unit in the algebra of End(K<A>)]
     maxlevel=len(a.data)-1
@@ -871,7 +869,9 @@ def pi1adjointOfWord(word):
 #So the linear function on signatures which returns element w of the log signature is
 #f(X) = dotprod(pistar(S(w)),X)
 def pi1adjoint(a):
-    """adjoint of pi1"""
+    """adjoint of pi1
+    This is what Eric Gehrig and Matthias Kawski call $\pi_1'$ in their
+    'A Hopf-Algebraic Formula for Compositions of Noncommuting Flows' """
     assert isinstance(a,Elt), a
     out=[dict() for i in a.data]
     for i,x in enumerate(a.data):
