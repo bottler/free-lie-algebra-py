@@ -830,9 +830,11 @@ def rho(a):
 #note: This definition of pi1 is following the remark just before eqn 3.2.4.
 #Although this looks inefficient, the direct calculation  of pi1 using equation 3.2.3
 #looks bad too, as we need to decompose words into all the shuffles (i.e. partitions) that make them.
-#pi1star I do do directly though, because the decomposition into concatenations feels easier
+#pi1adjoint I do do directly though, because the decomposition into concatenations feels easier
 def pi1(a):
-    """the unique linear map on Elts s.t. log(x)=pi1(x) for any grouplike x"""
+    """the unique linear map on Elts s.t. log(x)=pi1(x) for any grouplike x
+    This is what Eric Gehrig and Matthias Kawski call $\pi_1'$ in their
+    'A Hopf-Algebraic Formula for Compositions of Noncommuting Flows' """
     assert isinstance(a,Elt), a
     #p58: pi_1=log(id)=log(epsilon+I)=log1p(I) [because epsilon is the unit in the algebra of End(K<A>)]
     maxlevel=len(a.data)-1
@@ -843,7 +845,7 @@ def pi1(a):
         out+=fn(a)*(_reciprocateInteger(i)*(-1)**(i-1))
     return out
 
-def pi1starOfWord(word):
+def pi1adjointOfWord(word):
     assert isinstance(word,Word),word
     l=len(word.letters)
     if l==0:
@@ -863,18 +865,18 @@ def pi1starOfWord(word):
 #?not in Reutenauer but useful
 #useful for the following reason.
 #if L is a lie element and G is grouplike, then
-#(L,log(G)) = (L,pi1(G)) = (pi1star(L),G)
+#(L,log(G)) = (L,pi1(G)) = (pi1adjoint(L),G)
 #and L can of course be written in the pbw basis as a linear combination of P(w) for hall words w
 #which is how the log signature is written.
 #So the linear function on signatures which returns element w of the log signature is
 #f(X) = dotprod(pistar(S(w)),X)
-def pi1star(a):
+def pi1adjoint(a):
     """adjoint of pi1"""
     assert isinstance(a,Elt), a
     out=[dict() for i in a.data]
     for i,x in enumerate(a.data):
         for k,v in x.items():
-            f = pi1starOfWord(k)
+            f = pi1adjointOfWord(k)
             for k2,v2 in f.data[i].items():#We only need to look in one level of f
                 _increment_value_in_dict_to_coeff(out[i],k2,v2*v)
     return Elt(out)    
@@ -1041,7 +1043,7 @@ def S(w, basis):
     return out
 
 def wordToShuffleOfLogSigElts(w,basis):
-    """If w's factorisation into hall words is h_1..h_n, return shuffle product of {pi1star(S(h_i,basis))}.
+    """If w's factorisation into hall words is h_1..h_n, return shuffle product of {pi1adjoint(S(h_i,basis))}.
     This is possibly our idea."""
     assert isinstance(basis, HallBasis), basis
     assert type(w) in (tuple,str), w
@@ -1050,7 +1052,7 @@ def wordToShuffleOfLogSigElts(w,basis):
     assert 0<len(w)<=basis.m
     a=basis.factorIntoHallWords(w)
     #out = functools.reduce(shuffleProduct,(basisElementToElt(i) for i in a))
-    out = functools.reduce(shuffleProduct,(pi1star(S(foliageFromTree(i),basis)) for i in a))
+    out = functools.reduce(shuffleProduct,(pi1adjoint(S(foliageFromTree(i),basis)) for i in a))
     return out
 
 def Q(w, basis, ignoreFactor=False):#p128
@@ -1599,8 +1601,8 @@ def test():
         p2=signature_of_path_iisignature(path,3)
         assert distance(p1,p2)<1e-7 #not too close as iisignature uses float32s
     
-    assert pi1star(S((1,2),H)) == 0.5*onetwo
-    assert np.allclose(dotprod(pi1(r1),r2),dotprod(r1,pi1star(r2)))
+    assert pi1adjoint(S((1,2),H)) == 0.5*onetwo
+    assert np.allclose(dotprod(pi1(r1),r2),dotprod(r1,pi1adjoint(r2)))
 
     vol=p("123+231+312-132-213-321")
     assert r(vol)==zeroElt #so vol isn't a lie element
