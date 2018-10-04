@@ -1019,7 +1019,7 @@ def P(w, basis):
     return out
 
 def S(w, basis):
-    """Dual PBW basis element"""
+    """Dual PBW basis element, p108"""
     assert isinstance(basis, HallBasis), basis
     assert type(w) in (tuple,str), w
     assert len(w)<=basis.m
@@ -1035,7 +1035,7 @@ def S(w, basis):
     for i,j in itertools.groupby(a):
         word=tuple(foliage_iter(i))
         num=len(tuple(j))
-        factor *= num
+        factor *= math.factorial(num)
         base = S(word,basis)
         power = functools.reduce(shuffleProduct,(base for i in range(num)))
         out = shuffleProduct(out,power)
@@ -1525,7 +1525,7 @@ def test():
     assert P("121",H) == concatenationProduct(onetwo,word2Elt("1"))
     assert P("121",HH) == parse("[2]121-211-112")
     testPBWdual(["1122","1212"],H)
-    testPBWdual(["11221","11122","11212"],HH)
+    testPBWdual(["11221","22222","11122","11212"],HH)
     assert S("1212",H) == parse("1212+[2]1122")==Q("1212",H)
     assert parse("11212")==Q("11212",H)!=S("11212",H)==parse("11212+[2]11122")
     H23=HallBasis(2,3)
