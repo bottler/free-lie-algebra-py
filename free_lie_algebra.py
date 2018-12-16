@@ -331,7 +331,7 @@ def dotprod(a,b):
     return out
 
 def make_dual(a, returnElt=True):
-    """Turn the Elt a into the function mapping b to (a,b)
+    """Turn the Elt a into the function mapping b to dotprod(a,b)
     We use Elts both for tensor space and its dual, so this makes sense.
     Returning an Elt by default makes sense because can pass to tensorProductFunctions"""
     #alternative - let conc take coefficients as well as Elts.
@@ -481,7 +481,7 @@ def tensorProductFunctions(*args, **kwargs):
     """
     assert 0<len(args)
     if "n" in kwargs:
-        n=kwargs[n]
+        n=kwargs["n"]
     else:
         n=len(args)
     def loc_tensorProductFunctions(a):
@@ -495,7 +495,7 @@ def tensorProductFunctions(*args, **kwargs):
             else:
                 out = out + val
         if out is None:
-            return EltElt([],n)
+            return EltElt(dict(),n)
         return out
     return loc_tensorProductFunctions
 
@@ -672,7 +672,7 @@ def ad(a):
     return lambda b: lieProduct(a,b)
 
 def r(a):
-    """Right lie-bracketing function, extended linearly to Elts.
+    """Right Lie-bracketing function, extended linearly to Elts.
     e.g. 123 -> [1,[2,3]]
     This is also known as the Dynkin map"""
     assert isinstance(a,Elt), a
@@ -687,7 +687,7 @@ def r(a):
     return Elt(out)
 
 def l(a):
-    """Left lie-bracketing function, extended linearly to Elts.
+    """Left Lie-bracketing function, extended linearly to Elts.
     e.g. 123 -> [[1,2],3]
     page 36."""
     assert isinstance(a,Elt), a
@@ -715,7 +715,7 @@ def Ad(a):
         return out
     return loc_Ad
 
-#test (?) Ad(exp(x))(y)=exp(ad(x)(y)) ?for lie elts x and y
+#test (?) Ad(exp(x))(y)=exp(ad(x)(y)) ?for Lie elts x and y
 #Ad is the derivative of conjugation?
 
 def D(a):
@@ -862,7 +862,7 @@ def pi1adjointOfWord(word):
 
 #?not in Reutenauer but useful
 #useful for the following reason.
-#if L is a lie element and G is grouplike, then
+#if L is a Lie element and G is grouplike, then
 #(L,log(G)) = (L,pi1(G)) = (pi1adjoint(L),G)
 #and L can of course be written in the pbw basis as a linear combination of P(w) for hall words w
 #which is how the log signature is written.
@@ -988,7 +988,7 @@ class HallBasis:
         return self.factorIntoHallWords(w[:best_prefix_length])+[best]
 
 def arbitraryLieEltSympy(basis, m=None, symbol='x'):
-    """return an arbitrary lie element with Sympy coefficients"""
+    """return an arbitrary Lie element with Sympy coefficients"""
     assert isinstance(basis, HallBasis), basis
     if m==None:
         m=basis.m
@@ -1561,6 +1561,11 @@ def test():
 
     assert distance(l(r1),conc(tensorProductFunctions(alpha,D)(delta(r1))))<1e-14
 
+    def tensorWithSelf(x):
+        return tensorProduct(x,x)
+    f=tensorProductFunctions(tensorWithSelf,n=2)
+    assert f(tensorProduct(unitElt))*0 == f(tensorProduct(zeroElt))
+
     #This is equation 1.6.5 in Reutenauer. It doesn't hold for arbitrary P and Q,
     #but only for P having nothing in level 0. I use I(r1) to get a version of r1 which then works.
     #AKA Baker's identity
@@ -1605,7 +1610,7 @@ def test():
     assert np.allclose(dotprod(pi1(r1),r2),dotprod(r1,pi1adjoint(r2)))
 
     vol=p("123+231+312-132-213-321")
-    assert r(vol)==zeroElt #so vol isn't a lie element
+    assert r(vol)==zeroElt #so vol isn't a Lie element
 
     #Calculate the signature of the unit square two ways up to level 4
     with MaxLevelContext(4):
