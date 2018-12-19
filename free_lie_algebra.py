@@ -860,7 +860,7 @@ def pi1adjointOfWord(word):
     return out
 
 
-#?not in Reutenauer but useful
+#Previously called pi1star
 #useful for the following reason.
 #if L is a Lie element and G is grouplike, then
 #(L,log(G)) = (L,pi1(G)) = (pi1adjoint(L),G)
@@ -870,7 +870,8 @@ def pi1adjointOfWord(word):
 #f(X) = dotprod(pistar(S(w)),X)
 def pi1adjoint(a):
     """adjoint of pi1
-    This is what Eric Gehrig and Matthias Kawski call $\pi_1'$ in their
+    This is what is known as $\pi_1^*$ in Section 6.2 (p129) of Reutenauer.
+    It is what Eric Gehrig and Matthias Kawski call $\pi_1'$ in their
     'A Hopf-Algebraic Formula for Compositions of Noncommuting Flows' """
     assert isinstance(a,Elt), a
     out=[dict() for i in a.data]
