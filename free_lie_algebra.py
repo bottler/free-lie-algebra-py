@@ -992,6 +992,24 @@ class HallBasis:
             return [best]
         return self.factorIntoHallWords(w[:best_prefix_length])+[best]
 
+    def foliageLookup(self,m):
+        """return dict from foliage to hall word index in level m"""
+        assert 0<m<=self.m
+        out=dict()
+        for i,tree in enumerate(self.data[m-1]):
+            out[tuple(foliage_iter(tree))]=i
+        return out
+    
+    def indicesOfHallWords(self, m):
+        """returns an array of length d**m where elements which are HallWords correspond to their index
+        and all other indices are -1"""
+        assert 0<m<=self.m
+        if m==1:
+            return np.arange(self.d)
+        d=self.foliageLookup(m)
+        out=[d.get(wd,-1) for wd in wordIter(self.d,m,topOnly=True,asNumbers=True)]
+        return np.array(out)
+
 def arbitraryLieEltSympy(basis, m=None, symbol='x'):
     """return an arbitrary Lie element with Sympy coefficients"""
     assert isinstance(basis, HallBasis), basis
@@ -1030,6 +1048,9 @@ def S(w, basis):
     assert len(w)<=basis.m
     if type(w)==str:
         w=tuple(int(i) for i in w)
+    else:
+        for i in w:
+            assert isinstance(i,(int, str)), "perhaps you supplied a tree not a word?"
     if len(w)==0:
         return unitElt
     a=basis.factorIntoHallWords(w)
@@ -1272,6 +1293,20 @@ class TensorSpaceBasis:
             return [offset + i for i in o]
         return o                
 
+#This function illustrates expressing an Elt which is known to be a Lie element
+#in terms of a HallBasis. 
+def bch_coefficients(bas):
+    """Return the coefficients of the Baker-Campbell-Hausdorff (BCH)
+    aka Campbell-Baker-Hausdorff (CBH) formula in the given Hall Basis."""
+    assert isinstance(bas, HallBasis)
+    assert bas.d==2
+    x1=exp(letter2Elt(1),maxLevel=bas.m)
+    x2=exp(letter2Elt(2),maxLevel=bas.m)
+    x=log(concatenationProduct(x1,x2,maxLevel=bas.m))
+    out = [ [dotprod(S(foliageFromTree(i),bas),x)
+              for  i in lev]
+               for lev in bas.data]
+    return out
 
 ###END HALL BASIS STUFF
 
@@ -1525,6 +1560,7 @@ def test():
     H=HallBasis(2,12)
     assert basisElementToElt(HallBasis(2,3).data[2][1])==parse("122+221-[2]212")
     assert H.findAsFoliageOfHallWord("112")==((1,),((1,),(2,)))
+    assert np.allclose(H.indicesOfHallWords(3),[-1,0,-1,1,-1,-1,-1,-1])
     #print(H.factorIntoHallWords("2121211222"))
     HH=HallBasis(2,12,lessExpressionStandardHall)
     #print(HH.factorIntoHallWords("2121211222"))
@@ -1536,11 +1572,15 @@ def test():
     assert S("111",H) == parse("111")==Q("111",H)
     assert parse("11212")==Q("11212",H)!=S("11212",H)==parse("11212+[2]11122")
     H23=HallBasis(2,3)
+    H25=HallBasis(2,5,lessExpressionStandardHall)
     for t in (TensorSpaceBasis(word2Elt,None,2,3),TensorSpaceBasis(P,H23),
               TensorSpaceBasis(Q,H23),TensorSpaceBasis(S,H23)):
         z=np.random.rand(15)
         assert np.allclose(z,t.fromElt(t.toElt(z)))
-
+    
+    bch=bch_coefficients(H25)
+    assert len(bch)==5
+    assert np.allclose(720*np.array(bch[4]),[-2,-6,1,4,-4,-1])
 
     #group stuff in the Lie group
     g1 = randomGrouplikeElt(2,5)
