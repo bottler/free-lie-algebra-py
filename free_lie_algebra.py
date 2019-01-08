@@ -1076,7 +1076,7 @@ def Q(w, basis, ignoreFactor=False):#p128
     for i,j in itertools.groupby(a):
         word=tuple(foliage_iter(i))
         num=len(tuple(j))
-        factor *= num
+        factor *= math.factorial(num)
         base = word2Elt(word)
         power = functools.reduce(shuffleProduct,(base for i in range(num)))
         out = shuffleProduct(out,power)
@@ -1533,6 +1533,7 @@ def test():
     testPBWdual(["1122","1212"],H)
     testPBWdual(["11221","22222","11122","11212"],HH)
     assert S("1212",H) == parse("1212+[2]1122")==Q("1212",H)
+    assert S("111",H) == parse("111")==Q("111",H)
     assert parse("11212")==Q("11212",H)!=S("11212",H)==parse("11212+[2]11122")
     H23=HallBasis(2,3)
     for t in (TensorSpaceBasis(word2Elt,None,2,3),TensorSpaceBasis(P,H23),
