@@ -579,8 +579,9 @@ def exp(a,maxLevel=None,useRational=None):
     d[0]={emptyWord:unit_coefficient()}
     return Elt(d)
 
-def id(a):
-    """The identity on Elts"""
+#This function was previously called 'id', which clashed with a python builtin
+def id_Elt(a):
+    """The identity on Elts, id"""
     assert isinstance(a,Elt), a
     return a
 
@@ -609,10 +610,10 @@ def reverseAllWords(a):
            for level, x in enumerate(a.data)]
     return Elt(out)
 
-def lieProduct(a,b):
+def lieProduct(a,b, maxLevel=None):
     """The Lie product of Elts a and b"""
     assert isinstance(a,Elt) and isinstance(b,Elt), (a,b)
-    return concatenationProduct(a,b)-concatenationProduct(b,a)
+    return concatenationProduct(a,b,maxLevel)-concatenationProduct(b,a,maxLevel)
 
 def deltaOfLetter(letter,p):
     w=Word((letter,))
@@ -834,7 +835,7 @@ def rho(a):
 def pi1(a):
     """the unique linear map on Elts s.t. log(x)=pi1(x) for any grouplike x"""
     assert isinstance(a,Elt), a
-    #p58: pi_1=log(id)=log(epsilon+I)=log1p(I) [because epsilon is the unit in the algebra of End(K<A>)]
+    #p58: pi_1=log(id_Elt)=log(epsilon+I)=log1p(I) [because epsilon is the unit in the algebra of End(K<A>)]
     maxlevel=len(a.data)-1
     out=zeroElt
     fn=None
@@ -883,7 +884,10 @@ def pi1adjoint(a):
     return Elt(out)    
 
 def pi(a,n):
-    """\pi_n(a)"""
+    """\pi_n(a)
+    NB: This is not the function for projecting to the nth level, or up to the nth level, 
+    which some authors call \pi_n. For that, use the restrictedToLevel or truncatedToLevel 
+    member functions of Elt."""
     #This implementation is simple but slow
     #equation 3.2.6
     assert isinstance(a,Elt), a
@@ -1504,6 +1508,7 @@ def test():
 
     x=unitElt+alpha(shuffleProduct(A,word2Elt("1"))+A)
     assert D(x).data==[{},{},{},{a:-3},{Word("1211"):8,Word("1121"):8}]
+    assert D_inv(D(x))==I(x)
 
     assert 0 <= distance(b,log(exp(b,6),6)) < 1e-10
     assert 0 <= distance(A,log(exp(A,6),6)) < 1e-10
