@@ -94,6 +94,10 @@ class Elt:
         assert type(data)==list, data
         self.data=data
     def __hash__(self):
+        #(We don't rely on hashability of Elt in this file,
+        #but it could be useful.
+        #This is a basic implementation, not perfect because extra empty
+        #levels affect the hash but not ==.
         return hash( tuple( frozenset(level_dict.items()) for level_dict in self.data) )
     def __eq__(self,other):
         #return self.data==other.data
@@ -151,6 +155,8 @@ class Elt:
                         l=k
         return l
     def pretty(self, dp=15, tol=None):
+        return self._pretty(dp=dp, tol=tol, p=None)
+    def _pretty(self, dp, tol, p):
         """a pretty string representation"""
         #This could be made __repr__ if we trust it
         if tol is None:
@@ -160,21 +166,38 @@ class Elt:
         else:
             formatString = "[{:."+str(dp)+"g}]"
         def item(i,j):
-            if math.fabs(j)<tol:
+            number = isinstance(j,(float,sympy.Float, int))
+            if number and math.fabs(j)<tol:
                 return ""
-            sign = ("+" if j>=0 else "-")
+            sign = ("+" if (not number or j>=0) else "-")
             omitCoeff = len(i.letters)!=0 and (j==1 or j==-1)
             #numpy floats inherit from float
             formatString2Use = formatString if isinstance(j,(float,sympy.Float)) else "[{}]"
-            coeff = ("" if omitCoeff else formatString2Use.format(j if j>=0 else -j))
+            coeff = ("" if omitCoeff else formatString2Use.format(j if sign=="+" else -j))
             if len(i.letters)!=0 and coeff=="[1]":
                 coeff=""
             lets = "".join(str(j) for j in i.letters)
-            return sign+coeff+lets       
-        o= "".join(item(i,a[i]) for a in self.data for i in sorted(a,key=lambda x:x.letters))
-        if len(o)>0 and o[0]=="+":
-            return o[1:]
-        return o
+            return sign+coeff+lets
+        if p is None:
+            o= "".join(item(i,a[i]) for a in self.data for i in sorted(a,key=lambda x:x.letters))
+            if len(o)>0 and o[0]=="+":
+                return o[1:]
+            return o
+        else:
+            first=True
+            for a in self.data:
+                for i in sorted(a, key=lambda x:x.letters):
+                    it = item(i, a[i])
+                    if first and len(it)>0 and it[0]=="+":
+                        it=it[1:]
+                    if not first:
+                        p.breakable('')
+                    if len(it)>0:
+                        first=False
+                        p.text(it)
+    def _repr_pretty_(self, p, cycle):
+        """enable IPython pretty output"""
+        self._pretty(dp=15, tol=None, p=p)
     def prettySympy(self):
         o=""
         for lev in self.data:
@@ -282,13 +305,22 @@ class EltElt:
         out={k:v for k,v in self.data.items() 
              if all(j is None or len(i.letters)==j for i,j in zip(k,lengths))}
         return EltElt(out,self.n)
+    def _key(self, x):
+        length = sum(len(aa.letters) for aa in x)
+        return (length,tuple(aa.letters for aa in x))
+    def _format(self, i):
+        if isinstance(self.data[i],(float, sympy.Float, int)):
+            return "{:+}{}".format(self.data[i],i)
+        return "+{}{}".format(self.data[i],i)
     def pretty(self):
-        def key(x):
-            length = sum(len(aa.letters) for aa in x)
-            return (length,tuple(aa.letters for aa in x))
-        a=sorted(self.data, key=key)
+        a=sorted(self.data, key=self._key)
         #return [(self.data[i],i) for i in a]
-        return " ".join("{:+}{}".format(self.data[i],i) for i in a)
+        return " ".join(self._format(i) for i in a)
+    def _repr_pretty_(self, p, cycle):
+        """enable IPython pretty output"""
+        for i in sorted(self.data, key=self._key):
+            p.text(self._format(i))
+            p.breakable(' ')
         
 def get_coefficient(a,word):
     """return the coefficient of the Word word in the Elt a"""
