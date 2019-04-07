@@ -954,6 +954,9 @@ def printTreeAsLieBrackets(tup):
 def lessExpressionLyndon(a,b):
     return tuple(foliage_iter(a))<tuple(foliage_iter(b))
 
+def lessExpressionNyldon(a,b):
+    return tuple(foliage_iter(a))>tuple(foliage_iter(b))
+
 #this is the other way around from coropa
 def lessExpressionStandardHall(a,b):
     ll=len(tuple(foliage_iter(a)))
@@ -965,6 +968,33 @@ def lessExpressionStandardHall(a,b):
     if a[0]==b[0]:
          return lessExpressionStandardHall(a[1],b[1])
     return lessExpressionStandardHall(a[0],b[0])
+
+def nOfDerivedBasisElement(e):
+    """If e is an element of a Hall basis 'compatible with the derived series',
+       then it must be a member of some H_n. See section 5.3. Return that n.
+    """
+    if len(e)==1:
+        return 0
+    return 1+nOfDerivedBasisElement(e[1])
+
+#given an order L on trees, DerivedLess(L) is the order on trees
+#corresponding to the Hall basis described in section 5.3
+#which keeps H_0>H_1>H_2... and which uses L on trees within each H_n
+#This determines a Hall basis which is then compatible with the derived
+#series.
+#Having the order defined on all trees determines the HallBasis,
+#so we don't need to code
+#the algorithm - e.g. eqn 5.3.2 - separately if we want the basis,
+#we can just call the HallBasis constructor with this order.
+class DerivedLess:
+    def __init__(self, L):
+        self.L = L
+    def __call__(self, a, b):
+        aa = nOfDerivedBasisElement(a)
+        bb = nOfDerivedBasisElement(b)
+        if aa==bb:
+            return self.L(a,b)
+        return aa>bb
 
 def basisElementToElt(b):
     assert type(b) in (int, tuple)
@@ -1712,6 +1742,10 @@ def test():
     mat_r = expressFunctionInBasis(r, bas)
     mat_rho=expressFunctionInBasis(rho, bas)
     assert np.allclose(mat_r.T,mat_rho)
+
+    H=HallBasis(2,7,DerivedLess(lessExpressionNyldon))
+    H_positions=np.array([nOfDerivedBasisElement(j) for j in H.data[-1]])
+    assert (np.sum(2==H_positions),np.sum(1==H_positions)) == (12,6)
 
     testSympy()
     testRational()
