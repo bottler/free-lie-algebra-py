@@ -145,6 +145,12 @@ class Elt:
         o=[dict() for i in range(1+level)]
         o[-1]=self.data[level].copy()
         return Elt(o)
+    def coeffApply(self,f):
+        """apply f to all coefficients"""
+        out=[{k:f(v)
+          for k,v in x.items()}
+           for x in self.data]
+        return Elt(out)
     def maxLetter(self):
         """get the maximum letter used"""
         l=1
@@ -154,11 +160,13 @@ class Elt:
                     if l<k:
                         l=k
         return l
-    def pretty(self, dp=15, tol=None):
-        return self._pretty(dp=dp, tol=tol, p=None)
-    def _pretty(self, dp, tol, p):
+    def pretty(self, dp=15, tol=None, maxLevel=None):
         """a pretty string representation"""
+        return self._pretty(dp=dp, tol=tol, p=None, maxLevel=maxLevel)
+    def _pretty(self, dp, tol, p, maxLevel=None):
         #This could be made __repr__ if we trust it
+        maxLevel=_getMaxLevel(maxLevel)
+        s=(self if maxLevel is None else self.truncatedToLevel(maxLevel))
         if tol is None:
             tol=10**(-dp)
         if dp is None:
@@ -179,13 +187,13 @@ class Elt:
             lets = "".join(str(j) for j in i.letters)
             return sign+coeff+lets
         if p is None:
-            o= "".join(item(i,a[i]) for a in self.data for i in sorted(a,key=lambda x:x.letters))
+            o= "".join(item(i,a[i]) for a in s.data for i in sorted(a,key=lambda x:x.letters))
             if len(o)>0 and o[0]=="+":
                 return o[1:]
             return o
         else:
             first=True
-            for a in self.data:
+            for a in s.data:
                 for i in sorted(a, key=lambda x:x.letters):
                     it = item(i, a[i])
                     if first and len(it)>0 and it[0]=="+":
@@ -321,6 +329,15 @@ class EltElt:
         for i in sorted(self.data, key=self._key):
             p.text(self._format(i))
             p.breakable(' ')
+
+def sum_word_tensor_word(d,m):
+    """The sum of (w tensor w) for all words on d letters up to length m.
+    Occurs in some identities."""
+    o={}
+    for w in wordIter(d,m):
+        ww=Word(w)
+        o[(ww,ww)]=1
+    return EltElt(o,2)
         
 def get_coefficient(a,word):
     """return the coefficient of the Word word in the Elt a"""
@@ -339,7 +356,7 @@ def epsilon_numeric(a):
     return a.data[0][emptyWord]
 
 def epsilon(a):
-    """The coefficient of the empty word in the Exp a, as an Elt"""
+    """The coefficient of the empty word in the Elt a, as an Elt"""
     assert isinstance(a,Elt),a
     return Elt(a.data[:1])
 
@@ -446,9 +463,9 @@ def rightHalfShuffleProduct(a,b,maxLevel=None):
     """For two words a and b, their rightHalfShuffle is those shuffles
     of a and b for which the last element is the last element of b.
     This is extended to a bilinear operation on Elts.
-    If c is a letter then rightHalfShuffle(a,bc) is (a shuffle b)c.
-    Usually (a shuffle b) == rightHalfShuffle(a,b)+rightHalfShuffle(b,a) (*)
-    In the current implementation, rightHalfShuffle(a,b) is zero if b is the empty word,
+    If c is a letter then rightHalfShuffleProduct(a,bc) is (a shuffle b)c.
+    Usually (a shuffle b) == rightHalfShuffleProduct(a,b)+rightHalfShuffleProduct(b,a) (*)
+    In the current implementation, rightHalfShuffleProduct(a,b) is zero if b is the empty word,
     even if a is the empty word.
     Note that this means that (*) is violated if a and b are both the empty word.
     This operation is often denoted $\mathbin{\succ}$, being a dendriform algebra operation.
@@ -654,7 +671,12 @@ def deltaOfLetter(letter,p):
     return EltElt({i:o for i in tuples},p)
 
 def delta(a,p=2):#sh*, adjoint of sh
-    """delta(x) is $\delta(x)$. delta(x,p) is $\delta_p(x)$"""
+    """delta(x) is $\delta(x)$. delta(x,p) is $\delta_p(x)$
+       deshuffle coproduct: if w is a word, delta(w) is the sum of the pairs
+       of words (in both orders) of which w is a shuffle of the pair.
+       delta is thus clearly cocommutative
+       delta(ab)=delta(a)delta(b) so delta is an algebra morphism from
+       Elt to EltElt with each having concatenation"""
     assert isinstance(a,Elt), a
     assert isinstance(p,int), p
     out=dict()
@@ -757,6 +779,18 @@ def D(a):
           for k,v in x.items()}
            for level, x in enumerate(a.data)]
     out[0]=dict()
+    return Elt(out)
+
+def dilate(a, factor):
+    """multiply each level m by factor**m.
+    This is an automorphism of the grouplike elements.
+    In terms of signatures, corresponds to an enlargement/homothety/scaling
+    of the underlying path which is uniform/isotropic.
+    Commutes with lots of things - e.g. log."""
+    assert isinstance(a,Elt), a
+    multdict = lambda x,f: {k:f*v for k,v in x.items()}
+    out=[multdict(x,factor**level)
+            for level, x in enumerate(a.data)]
     return Elt(out)
 
 def D_inv(a):
@@ -996,6 +1030,23 @@ class DerivedLess:
             return self.L(a,b)
         return aa>bb
 
+class KeyFromLess:
+    """Adapter for using a `less' function as a key in sort or sorted"""
+    def __init__(self, less):
+        self.less=less
+    @functools.total_ordering
+    class Key:
+        def __init__(self, less, tree):
+            self.tree=tree
+            self.less=less
+        def __eq__(self,o):
+            #often identity will be enough here
+            return o.tree==self.tree
+        def __lt__(self,o):
+            return self.less(self.tree,o.tree)
+    def __call__(self, tree):
+        return self.Key(self.less, tree)
+
 def basisElementToElt(b):
     assert type(b) in (int, tuple)
     if type(b) is int:
@@ -1005,12 +1056,16 @@ def basisElementToElt(b):
     return lieProduct(basisElementToElt(b[0]),basisElementToElt(b[1]))
 
 #A basis knows about its elements as tuples.
+#Note that data[m-1] is the basis elements (trees) of level m.
 class HallBasis:
-    def __init__(self, d, m, lessExpression=lessExpressionLyndon):
+    def __init__(self, d, m, lessExpression=lessExpressionLyndon, sortLevels=True):
         assert d>1
         assert m>0
         self.d=d
         self.m=m
+        self.less=lessExpression
+        self.sortKey=KeyFromLess(lessExpression)
+
         out=[[(i,) for i in range(1,d+1)]]
         for mm in range(2,m+1):
             out.append([])
@@ -1019,8 +1074,9 @@ class HallBasis:
                     for y in out[mm-firstLev-1]:
                         if lessExpression(x,y) and (firstLev==1 or not lessExpression(x[1],y)):
                             out[-1].append((x,y))
+            if sortLevels:
+                out[-1].sort(key=self.sortKey)
         self.data=out
-        self.less=lessExpression
 
     #w must be str or tuple of ints
     def findAsFoliageOfHallWord(self, w):
@@ -1071,6 +1127,31 @@ class HallBasis:
         d=self.foliageLookup(m)
         out=[d.get(wd,-1) for wd in wordIter(self.d,m,topOnly=True,asNumbers=True)]
         return np.array(out)
+
+    def indicesOfAnagramSet(self, counts):
+        """return the indices (in the relevant level) of elements which have the homogeneity given by counts"""
+        counts = list(counts)
+        while len(counts)<self.d:
+            counts=counts+[0]
+        assert len(counts)==self.d
+        level = sum(counts)
+        assert 0<level <= self.m
+        o=[]
+        for i, tree in enumerate(self.data[level-1]):
+            counts_=list(counts)
+            for letter in foliage_iter(tree):
+                if counts_[letter-1]==0:
+                    break
+                counts_[letter-1]-=1
+            else:
+                o.append(i)
+        return o
+
+    def allElementsInOrder(self):
+        """return list of all Hall trees sorted in ascending order according to the defining order"""
+        o=[i for dat in self.data for i in dat]
+        o.sort(key=self.sortKey)
+        return o
 
 def arbitraryLieEltSympy(basis, m=None, symbol='x'):
     """return an arbitrary Lie element with Sympy coefficients"""
@@ -1212,7 +1293,9 @@ class TensorSpaceBasis:
 
     #Simple constructors
     @staticmethod
-    def wordBasis(d,m):
+    def wordBasis(d,m=None):
+        if m is None and isinstance(d, HallBasis):
+            return TensorSpaceBasis(word2Elt, d=d.d, m=d.m)
         return TensorSpaceBasis(word2Elt,d=d,m=m)
     @staticmethod
     def fromFunctionAndHallBasis(fn, hallBasis, m=None):
@@ -1639,10 +1722,13 @@ def test():
               TensorSpaceBasis(Q,H23),TensorSpaceBasis(S,H23)):
         z=np.random.rand(15)
         assert np.allclose(z,t.fromElt(t.toElt(z)))
-    
+
+    for i,j in zip(H25.data[-1], H25.data[-1][1:]):
+        #check the sorting works
+        assert H25.less(i,j)
     bch=bch_coefficients(H25)
     assert len(bch)==5
-    assert np.allclose(720*np.array(bch[4]),[-2,-6,1,4,-4,-1])
+    assert np.allclose(720*np.array(bch[4]),[1,4,-4,-1,-2,-6])
 
     #group stuff in the Lie group
     g1 = randomGrouplikeElt(2,5)
