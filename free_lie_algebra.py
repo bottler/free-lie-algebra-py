@@ -28,6 +28,11 @@ import pyparsing
 #(through the function dotprod), which
 #provides flexibility but is arguably not algebraically nice.
 
+#If you know in advance that you only care about the answer up to a certain depth
+# (number of levels) then you can save a lot of time in lots of functions. Most of
+# the runtime of product operations is often in higher levels. These operations take a
+# maxLevel parameter. You can use the context manager MaxLevelContext to set it everywhere.
+
 #There's a simple string representation of an Elt
 #(which you go *to* via pretty() and *from* via parse() )
 #in which coefficients are surrounded by square brackets.
@@ -36,8 +41,10 @@ import pyparsing
 #If you want to use your own coefficient as K, make it something hashable,
 #something with operators +, -, * and ==,
 #and make sure * accepts float and int as well as itself
-#and change the next five functions.
+#and change the next six functions.
 #The "distance" function won't work, but you can sort that yourself.
+#By default, the coefficients are float, which is simple. If you use the UseRationalContext
+#context manager, you get sympy.Rational.
 def assert_coefficient(c):
     #this should accept float and int as well as a custom coefficient
     #note that isinstance(c,float) includes numpy floating point types as well as actual float
@@ -52,19 +59,21 @@ def isunit_coefficient(c):#should accept float and int as well as custom coeffic
 def iszero_coefficient(c):#should accept float and int as well as custom coefficient
     return 0==c
 
-_defaultMaxLevel=None
-def _getMaxLevel(level):
-    if level is None:
-        return _defaultMaxLevel
-    return level
-
 _defaultUseRational=False
-def _reciprocateInteger(i,useRational=None):
+def reciprocate_integer(i,useRational=None):
+    """This function takes an int i and a suggestion whether to use rationals
+    instead of floats. It returns 1/i as a coefficient."""
     if useRational is None:
         useRational=_defaultUseRational
     if useRational:
         return Rational(1,i)
     return 1.0/i
+
+_defaultMaxLevel=None
+def _getMaxLevel(level):
+    if level is None:
+        return _defaultMaxLevel
+    return level
 
 class Word:
     """The alphabet is int. This class represents an immutable word on the alphabet"""
@@ -146,7 +155,7 @@ class Elt:
         o[-1]=self.data[level].copy()
         return Elt(o)
     def coeffApply(self,f):
-        """apply f to all coefficients"""
+        """return a new object where f has been applied to all coefficients"""
         out=[{k:f(v)
           for k,v in x.items()}
            for x in self.data]
@@ -298,6 +307,36 @@ class EltElt:
         assert isinstance(b,EltElt), b
         assert self.n == b.n
         return self+(-1*b)
+    def contract(self, a, b, simplify=True):
+        """Tensor contraction. Return new EltElt where
+        the ath and bth element (starting from 1) have been contracted.
+        If simplify is True, return a coefficient or an Elt if possible"""
+        assert 1<=a<=self.n
+        assert 1<=b<=self.n
+        assert a!=b
+        if a > b:
+            b, a = a,b
+        d = {}
+        for k,v in self.data.items():
+             if k[a-1]==k[b-1]:
+                 key=k[:a-1]+k[a:b-1]+k[b:]
+                 _increment_value_in_dict_to_coeff(d, key, v)
+        o=EltElt(d,self.n-2)
+        if simplify and o.n==0:
+                return o.as_coefficient()
+        if simplify and o.n==1:
+            return o.as_Elt()
+        return o
+    def as_Elt(self):
+        """If we are equivalent to just an Elt, return it"""
+        assert self.n == 1
+        o=functools.reduce(operator.add,(word2Elt(k)*v for (k,),v in self.data.items()))
+        return o
+    def as_coefficient(self):
+        """If we are equivalent to just a coefficient, return it"""
+        assert self.n == 0
+        [o]=self.data.values()
+        return o
     def truncatedToTotalLength(self,total):
         out={k:v for k,v in self.data.items() if sum(len(i.letters) for i in k)<=total}
         return EltElt(out,self.n)
@@ -330,15 +369,6 @@ class EltElt:
             p.text(self._format(i))
             p.breakable(' ')
 
-def sum_word_tensor_word(d,m):
-    """The sum of (w tensor w) for all words on d letters up to length m.
-    Occurs in some identities."""
-    o={}
-    for w in wordIter(d,m):
-        ww=Word(w)
-        o[(ww,ww)]=1
-    return EltElt(o,2)
-        
 def get_coefficient(a,word):
     """return the coefficient of the Word word in the Elt a"""
     assert isinstance(a,Elt),a
@@ -384,6 +414,7 @@ def make_dual(a, returnElt=True):
     We use Elts both for tensor space and its dual, so this makes sense.
     Returning an Elt by default makes sense because can pass to tensorProductFunctions"""
     #alternative - let conc take coefficients as well as Elts.
+    #c.f. EltElt's contract method
     assert isinstance(a,Elt), a
     def loc_dual(b):
         d=dotprod(a,b)
@@ -558,7 +589,62 @@ def concatenationProductEltElt(a,b):
             _increment_value_in_dict_to_coeff(out,k,v1*v2)
     return EltElt(out,a.n)
 
+def shuffleConcatProduct(a,b,maxLevel=None):
+    """The operation on two (Elt tensor Elt)s which is shuffle on left and
+    concatenation on right.
+    This is the product for the algebra {\mathcal A} described on page 29.
+    The maxLevel argument is is just the maximum length of the first component.
+    In many cases, you know everything is a combination of (w1,w2) where
+    w1 and w2 are anagrams or at least have the same length, so this simple
+    maxLevel control is enough to control the runtime of this function."""
+    assert isinstance(a,EltElt)
+    assert isinstance(b,EltElt)
+    assert a.n==2
+    assert b.n==2
+    maxLevel = _getMaxLevel(maxLevel)
+    o={}
+    for (k11,k12),v1 in a.data.items():
+        lenk11=len(k11.letters)
+        for (k21,k22),v2 in b.data.items():
+            if maxLevel is not None and len(k21.letters)+lenk11>maxLevel:
+               continue
+            v1v2=v1*v2
+            k2=concatenate(k12,k22)
+            sh=shuffleProduct(word2Elt(k11),word2Elt(k21))
+            for k,v in _allValuesFromElt(sh):
+                _increment_value_in_dict_to_coeff(o,(k,k2),v1v2*v)
+    return EltElt(o,2)
+
+def sum_word_tensor_word(d,m):
+    """The sum of (w tensor w) for all words on d letters up to length m.
+    p30. Occurs in some identities."""
+    o={}
+    for w in wordIter(d,m):
+        ww=Word(w)
+        o[(ww,ww)]=1
+    return EltElt(o,2)
+
+def sum_word_tensor_f_word(f,d,m):
+    """The sum of (w tensor f(w)) for all words on d letters up to length m.
+    p30."""
+    o={}
+    for w in wordIter(d,m):
+        ww=Word(w)
+        fww=f(word2Elt(ww))
+        for lev in fww.data:
+            for k,v in lev.items():
+                _increment_value_in_dict_to_coeff(o,(ww,k),v)
+    return EltElt(o,2)
+
+def swap_EltElt(a):
+    """swap/transpose an EltElt representing (Elt tensor Elt)"""
+    assert isinstance(a,EltElt)
+    assert a.n == 2
+    o = {(k2,k1):v for (k1,k2),v in a.data.items()}
+    return EltElt(o,2)
+
 def dot_EltElt(a,b):
+    """The dot product of two EltElts in the word basis"""
     assert isinstance(a,EltElt) and isinstance(b,EltElt), (a,b)
     assert a.n == b.n
     out=zero_coefficient()
@@ -594,7 +680,7 @@ def log1p(a,maxLevel=None,useRational=None):
     assert type(maxLevel) is int, maxLevel
     s=t=zeroElt
     for depth in range(maxLevel,0,-1):
-        constant = _reciprocateInteger(depth, useRational)
+        constant = reciprocate_integer(depth, useRational)
         t=concatenationProduct(a,s,1+maxLevel-depth)
         if depth>1:
             s=a*constant-t
@@ -621,7 +707,7 @@ def exp(a,maxLevel=None,useRational=None):
     assert type(maxLevel) is int, maxLevel
     s=zeroElt
     for depth in range(maxLevel,0,-1):
-        constant = _reciprocateInteger(1+depth, useRational)
+        constant = reciprocate_integer(1+depth, useRational)
         t=concatenationProduct(a*constant,s,1+maxLevel-depth)
         s=a+t
     d=[None] if s is zeroElt else s.data
@@ -798,7 +884,7 @@ def D_inv(a):
     possibly not in Reutenauer."""
     assert isinstance(a,Elt), a
     assert iszero_coefficient(get_coefficient(a,emptyWord)), a
-    out=[{k:v*(0 if level==0 else _reciprocateInteger(level))
+    out=[{k:v*(0 if level==0 else reciprocate_integer(level))
           for k,v in x.items()}
            for level, x in enumerate(a.data)]
     return Elt(out)
@@ -907,7 +993,7 @@ def pi1(a):
     fn=None
     for i in range(1,maxlevel+1):
         fn=I if i==1 else star(I,fn)
-        out+=fn(a)*(_reciprocateInteger(i)*(-1)**(i-1))
+        out+=fn(a)*(reciprocate_integer(i)*(-1)**(i-1))
     return out
 
 def pi1adjointOfWord(word):
@@ -920,7 +1006,7 @@ def pi1adjointOfWord(word):
     out=zeroElt
     lets = [letter2Elt(i) for i in word.letters]
     for k in range(1,l+1):
-        constant = (-1)**(k-1)*_reciprocateInteger(k)
+        constant = (-1)**(k-1)*reciprocate_integer(k)
         for u in kbins(lets,k):
             v=[concatenationProductMany(i) for i in u]
             out += constant * shuffleProductMany(v)
@@ -962,7 +1048,7 @@ def pi(a,n):
     b=delta(a,n)
     c=tensorProductFunctions(*([pi1]*n))(b)
     d=conc(c)
-    return d*_reciprocateInteger(math.factorial(n))
+    return d*reciprocate_integer(math.factorial(n))
 
 ###BEGIN HALL BASIS STUFF
 
@@ -1208,7 +1294,7 @@ def S(w, basis):
         base = S(word,basis)
         power = functools.reduce(shuffleProduct,(base for i in range(num)))
         out = shuffleProduct(out,power)
-    out = out*_reciprocateInteger(factor)
+    out = out*reciprocate_integer(factor)
     return out
 
 def wordToShuffleOfLogSigElts(w,basis):
@@ -1245,7 +1331,7 @@ def Q(w, basis, ignoreFactor=False):#p128
         power = functools.reduce(shuffleProduct,(base for i in range(num)))
         out = shuffleProduct(out,power)
     if not ignoreFactor:
-        out = out*_reciprocateInteger(factor)
+        out = out*reciprocate_integer(factor)
     return out
 
 class TensorSpaceBasis:
@@ -1402,6 +1488,22 @@ class TensorSpaceBasis:
         targets = self.fromElt(x) if single else np.transpose([self.fromElt(i) for i in x])
         v=scipy.linalg.lstsq(sources.T,targets)
         if not allowFailure:
+            if v[2]<len(l):
+                #we are about to assert anyway. Let's be helpful and give some more info
+                print("The l are not linearly independent")
+                print("There are "+str(len(l))+" of them but their span has dimension "+str(v[2])+".")
+                svd1=scipy.linalg.svd(sources.T)
+                ##Something like this could get you an example of something in the
+                ##relevant level but not in the span
+                ##eg if your focus was on level m with d
+                ##svd=scipy.linalg.svd(sources.T[(d**m-1):])
+                ##print(svd[0][-1])
+                ##print(svd[0][:,-1])
+                print("an example linear dependency is the following combination:")
+                for i,j in enumerate(lcm_array(svd1[2][v[2]])):
+                    if abs(j)>0.001:
+                        print(i, round(j,3), l[i].pretty())
+
             assert v[2]==len(l)#l is not LI
             assert np.amax(v[1])<1e-8#not in span
         return v[0] if single else [v[0][:,i] for i in range(v[0].shape[1])]
@@ -1523,6 +1625,35 @@ def expressFunctionInBasis(f,bas,d=None,m=None, basisForImage=None):
         out.append(im)
     return np.array(out).T
 
+def lcm_array(x, rounding=2, tol=1e-7):
+    """If x is an array of integers scaled by a positive constant,
+    e.g to a unit vector,
+    try to return an unscaled version.
+    This is useful if you're in that strange situation where you think SVD
+    is trying to tell you about a polynomial.
+    """
+    x=np.array(x)
+    y_0 = np.unique(sorted([abs(i) for i in x if abs(i)>tol]))
+    if len(y_0)==0:
+        return x
+    y_1=[]
+    for i in range(len(y_0)):
+        for j in range(i):
+            rem = y_0[i]%y_0[j]
+            if rem>tol:
+                y_1.append(rem)
+    y_1 = np.unique(sorted(y_1+list(y_0)))
+    y_2=[]
+    for i in range(len(y_1)):
+        for j in range(i):
+            rem = y_1[i]%y_1[j]
+            if rem>tol:
+                y_2.append(rem)
+    y_2 = np.unique(sorted(y_2+list(y_1)))
+    out = x/y_2[0]
+    if rounding is not None:
+        out = np.array([round(i,rounding) for i in out])
+    return out
 
 class MaxLevelContext():
     """Several functions have a maxLevel parameter.
@@ -1630,6 +1761,11 @@ def testHopfAlgebraProperty(P,Q,R):
     #print("testHopf2:",c,d)
     assert np.allclose(c,d)
 
+    #If you make_dual two Elts and convolve them (star)
+    #you get the dual of their concatenation product
+    #You can think of a signature as the dual of an infinite Elt
+    #i.e. a character on the shuffle Hopf algebra, with star as the chen product.
+
 #grouplike elts obviously obey the coalgebra axioms with delta and epsilon
 
 def testPBWdual(words,basis):
@@ -1687,8 +1823,10 @@ def test():
     assert 12==dotprod(rA*2,rA)==epsilon_numeric(make_dual(rA)(rA*2))
 
     x=unitElt+alpha(shuffleProduct(A,word2Elt("1"))+A)
-    assert D(x).data==[{},{},{},{a:-3},{Word("1211"):8,Word("1121"):8}]
-    assert D_inv(D(x))==I(x)
+    Dx=D(x)
+    assert Dx.data==[{},{},{},{a:-3},{Word("1211"):8,Word("1121"):8}]
+    assert D_inv(Dx)==I(x)
+    assert dilate(A, -2) == -8*A
 
     assert 0 <= distance(b,log(exp(b,6),6)) < 1e-10
     assert 0 <= distance(A,log(exp(A,6),6)) < 1e-10
@@ -1780,6 +1918,17 @@ def test():
     r21=randomLieElt(2,1)
     assert dotprod(rho(r1),concatenationProductMany([r22,r21,r21]))<1e-14
 
+    swtw = sum_word_tensor_word(2,2)
+    swtw_ = '+1(, ) +1(1, 1) +1(2, 2) +1(11, 11) +1(12, 12) +1(21, 21) +1(22, 22)'
+    assert swtw.contract(1,2)==7
+    assert swtw.pretty()==swtw_
+    rho_wtw = sum_word_tensor_f_word(rho,2,3)
+    r_wtw = sum_word_tensor_f_word(r,2,3)
+    assert swap_EltElt(r_wtw) == rho_wtw
+    rho_121=rho(A)
+    rho_121_ = tensorProduct(A,rho_wtw).contract(1,2)
+    assert rho_121_ == rho_121
+
     r3=p("[9]+1+12+123")
     assert reverseAllWords(r3)==p("[9]+1+21+321")
     assert distance(r3,functools.reduce(operator.add,(pi(r3,i) for i in range(4))))<1e-10
@@ -1832,6 +1981,8 @@ def test():
     H=HallBasis(2,7,DerivedLess(lessExpressionNyldon))
     H_positions=np.array([nOfDerivedBasisElement(j) for j in H.data[-1]])
     assert (np.sum(2==H_positions),np.sum(1==H_positions)) == (12,6)
+
+    assert np.allclose(lcm_array(np.array([6,0,15.,-10])/math.sqrt(654)), [6,0,15,-10])
 
     testSympy()
     testRational()
