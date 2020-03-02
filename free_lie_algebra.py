@@ -531,6 +531,47 @@ def rightHalfShuffleProduct(a,b,maxLevel=None):
                             _increment_value_in_dict_to_coeff(out[level],w,prod)
     return Elt(out)
 
+def leftHalfShuffleProduct(a,b,maxLevel=None):
+    """For two words a and b, their leftHalfShuffle is those shuffles
+    of a and b for which the first element is the first element of a.
+    This is extended to a bilinear operation on Elts.
+    If c is a letter then leftHalfShuffleProduct(ab,c) is a(b shuffle c).
+    Usually (a shuffle b) == leftHalfShuffleProduct(a,b)+leftHalfShuffleProduct(b,a) (*)
+    In the current implementation, leftHalfShuffleProduct(a,b) is zero if a is the empty word,
+    even if b is the empty word.
+    Note that this means that (*) is violated if a and b are both the empty word.
+    This operation might be denoted $\mathbin{\prec}$, being a dendriform algebra operation.
+    It is not mentioned in the book."""
+
+    assert isinstance(a,Elt) and isinstance(b,Elt), (a,b)
+    topLevel = (len(a.data)-1)+(len(b.data)-1)
+    maxLevel = _getMaxLevel(maxLevel)
+    if maxLevel is None or maxLevel>topLevel:
+        maxLevel = topLevel
+    out=[dict() for i in range(maxLevel+1)]
+    for level in range(0,maxLevel+1):
+        for blevel in range(0,min(level+1,len(b.data))):
+            alevel=level-blevel
+            if alevel >= len(a.data) or a.data[alevel] is None or b.data[blevel] is None:
+                continue
+            if alevel ==0:
+                continue
+            source=(0,)*(alevel-1) + (1,)*blevel
+            for l1,l2 in a.data[alevel].items():
+                for r1,r2 in b.data[blevel].items():
+                    prod=l2*r2
+                    out_=np.zeros(level,dtype="int32")
+                    if level==1:#so l1 is a single letter
+                        _increment_value_in_dict_to_coeff(out[1],l1,prod)
+                    else:
+                        for mask in multiset_permutations(source):
+                            mask=np.array([0]+mask)
+                            np.place(out_,1-mask,l1.letters)
+                            np.place(out_,mask,r1.letters)
+                            w = Word(out_)
+                            _increment_value_in_dict_to_coeff(out[level],w,prod)
+    return Elt(out)
+
 def _allValuesFromElt(a):
     assert isinstance(a,Elt), a
     return tuple(itertools.chain.from_iterable(j.items() for j in a.data))
@@ -688,6 +729,9 @@ def log1p(a,maxLevel=None,useRational=None):
 
 def log(a,maxLevel=None,useRational=None):
     """tensor logarithm of a where a is an Elt with 1 in level 0"""
+    #TODO: Can generalise to level 0 being an arbitrary nonzero number,
+    #by dividing out the constant term, running this, and adding on
+    #math.log of the original constant
     assert isinstance(a,Elt), a
     assert isunit_coefficient(get_coefficient(a,emptyWord)), a
     d=a.data[:]#Shallow copy, but ok, we won't return it
@@ -696,6 +740,10 @@ def log(a,maxLevel=None,useRational=None):
 
 #exp(x)=1+x(1+x/2(1+x/3(...
 #=1+x+x/2(x+x/3(x+...))
+#exp can be defined even if a has a nonzero constant term,
+#by multiplying the answer by math.exp(the constant term)
+#- this agrees, of course, with the limit
+#of the power series.
 def exp(a,maxLevel=None,useRational=None):
     """tensor exponential of the Elt a.
     You almost always need to specify a maxLevel here"""
@@ -713,6 +761,52 @@ def exp(a,maxLevel=None,useRational=None):
     d=[None] if s is zeroElt else s.data
     d[0]={emptyWord:unit_coefficient()}
     return Elt(d)
+
+def log1p_shuffleConcat(a,maxLevel=None):
+    """returns the tensor logarithm of (1+a) in the algebra {\mathcal A}
+    if maxLevel is not given, only go up to the maximum level already in a
+     - there is no other way to pick a maximum level.
+    """
+    assert isinstance(a,EltElt)
+    assert a.n==2
+    e_e=(emptyWord,emptyWord)
+    assert iszero_coefficient(a.data.get(e_e,0)), a
+    maxLevel = _getMaxLevel(maxLevel)
+    assert maxLevel is not None
+    assert type(maxLevel) is int, maxLevel
+    s=t=EltElt({},2)
+    for depth in range(maxLevel,0,-1):
+        constant = reciprocate_integer(depth)
+        t=shuffleConcatProduct(a,s,1+maxLevel-depth)
+        if depth>1:
+            s=a*constant-t
+    return a-t
+
+def exp_shuffleConcat(a, maxLevel=None):
+    """exponential in the algebra {\mathcal A}
+    (which is EltElts with n=2 with shuffleConcatProduct).
+    used e.g. in A Hopf-Algebraic Formula for Compositions of Noncommuting Flows
+    (Eric Gehrig and Matthias Kawski).
+
+    Note the meaning of the maxLevel argument, which is useful.
+    We only care about getting keys (k1,k2) correct if k1 and k2
+    have lengths maxLevel or less.
+    If you knew all keys in a were longer than 1 letter then
+    you don't need to run the calculation to as much depth as we do."""
+    assert isinstance(a,EltElt)
+    assert a.n==2
+    e_e=(emptyWord,emptyWord)
+    assert iszero_coefficient(a.data.get(e_e,0)), a
+    maxLevel = _getMaxLevel(maxLevel)
+    if maxLevel is None:
+        maxLevel = a.getdeg()/2 #sensible guess
+
+    s=EltElt({},2)
+    for depth in range(maxLevel,0,-1):
+        constant = reciprocate_integer(1+depth)
+        t=shuffleConcatProduct(a*constant,s,1+maxLevel-depth)
+        s=a+t
+    return s + EltElt({e_e:unit_coefficient()},2)
 
 #This function was previously called 'id', which clashed with a python builtin
 def id_Elt(a):
@@ -890,7 +984,13 @@ def D_inv(a):
     return Elt(out)
 
 def conc(a):
-    """This is both conc and conc_p, as we don't assert a.n==2"""
+    """This is both conc and conc_p, as we don't assert a.n==2 .
+    If you think of Elts as the tensor space of a vector space V,
+    then this is the obvious morphism from external-tensor-product
+    (say \boxtimes) powers (i.e. EltElt) to internal-tensor-product
+    (i.e. concatenation product, say \otimes) powers (i.e. Elt)
+    which takes a\boxtimes b to a\otimes b.
+    """
     assert isinstance(a,EltElt), a
     out=[dict() for i in range(a.get_deg()+1)]
     for k,v in a.data.items():
@@ -1070,6 +1170,23 @@ def printTreeAsLieBrackets(tup):
         return str(tup[0])
     return "["+printTreeAsLieBrackets(tup[0])+","+printTreeAsLieBrackets(tup[1])+"]"
 
+def count_identical_right_factors(tree):
+    """
+    Given a tree, we can ask how many times it has its right factor.
+    Let da(x) be the function mapping y to [y,x] (This is the ad applied the other way round, or minused).
+    Then count_identical_right_factors(tree) is the maximum n such that there are x and y
+    such that da(x)^n (y)==tree.
+    E.g. (((1,),(4,)),(4,)) maps to 2.
+    """
+    if not isinstance(tree, tuple) or len(tree)==1:
+        return 1
+    count = 1
+    rhs = tree[1]
+    lhs = tree[0]
+    while len(lhs)==2 and lhs[1]==rhs:
+        count +=1
+        lhs = lhs[0]
+    return count
 
 def lessExpressionLyndon(a,b):
     return tuple(foliage_iter(a))<tuple(foliage_iter(b))
@@ -1166,6 +1283,8 @@ class HallBasis:
 
     #w must be str or tuple of ints
     def findAsFoliageOfHallWord(self, w):
+        """If the word w is a Hall word, return the corresponding Hall tree,
+        otherwise return None"""
         assert type(w) in (tuple,str), w
         assert 0<len(w)<=self.m
         if type(w)==str:
@@ -1577,7 +1696,7 @@ def expandThroughGrading(gradedList,level,fn):
     return [fn(i) for i in expandSetsThroughGrading(gradedList,level)]
 
 def signature_of_path_manual(path,m):
-    """calculate the signature of a path"""
+    """calculate the signature of a path, expressed as an Elt"""
     path=np.array(path)
     d=path.shape[-1]
     if np.shape(path)[0]<2:
@@ -1589,7 +1708,7 @@ def signature_of_path_manual(path,m):
     return sig
 
 def signature_of_path_iisignature(path,m):
-    """calculate the signature of a path using iisignature"""
+    """calculate the signature of a path, expressed as an Elt, using iisignature"""
     import iisignature
     d=np.shape(path)[-1]
     s=iisignature.sig(path,m,1)
@@ -1626,9 +1745,9 @@ def expressFunctionInBasis(f,bas,d=None,m=None, basisForImage=None):
     return np.array(out).T
 
 def lcm_array(x, rounding=2, tol=1e-7):
-    """If x is an array of integers scaled by a positive constant,
-    e.g to a unit vector,
-    try to return an unscaled version.
+    """If x is an array of floats which were a load of integers scaled
+    by a positive constant, e.g to a unit vector,
+    try to return an unscaled version, i.e. a multiple of x containing integers.
     This is useful if you're in that strange situation where you think SVD
     is trying to tell you about a polynomial.
     """
@@ -1780,6 +1899,63 @@ def testPBWdual(words,basis):
         for j in range(len(words)):
             assert np.allclose(1 if i==j else 0, dotprod(Ps[i],Ss[j]))
 
+def testSussman(basis):
+    """
+    Verify an identity from Hector Sussman's 1986 'A Product Expansion for the Chen Series'
+    and which can be seen in several papers in control theory papers, for the top level of the
+    given Hall basis.
+    The paper uses an older more restricted definition of Hall basis which is not needed.
+    In some papers it appears as saying some value for each Hall basis element (the coordinate of the
+    second kind / the dual PBW element) is a constant times the right half shuffle of the left and
+    right parts of the element.
+    Here we keep the constant explicit.
+    In the convention we use, it is the left half shuffle which is relevant.
+    """
+    for tree in basis.data[-1]:
+        S_left = S(foliageFromTree(tree[0]), basis)
+        S_right = S(foliageFromTree(tree[1]), basis)
+        S_tree = S(foliageFromTree(tree), basis)
+        count = count_identical_right_factors(tree)
+        assert leftHalfShuffleProduct(S_left,S_right) == count * S_tree
+
+def testCoordinates(basis):
+    """
+    In 'A Hopf-Algebraic Formula for Compositions of Noncommuting Flows'
+    (Eric Gehrig and Matthias Kawski), two functions on Hall basis elements are defined,
+    coordinates of the first kind, zeta, and coordinates of the second kind, xi.
+    We verify their defining equations in this function.
+    """
+    def defining_equation_for_coefficients_first_kind_rhs(basis):
+        log_o=EltElt({},2)
+        for tree in basis.allElementsInOrder():
+            w=foliageFromTree(tree)
+            coefficient_of_the_first_kind=pi1adjoint(S(w,basis))
+            p=P(w, basis)
+            log_o = log_o+tensorProduct(coefficient_of_the_first_kind,p)
+        o=exp_shuffleConcat(log_o, basis.m)
+        return o
+
+    def defining_equation_for_coefficients_second_kind_rhs(basis):
+        o=EltElt({(emptyWord,emptyWord):unit_coefficient()},2)
+        for tree in basis.allElementsInOrder():
+            w=foliageFromTree(tree)
+            coefficient_of_the_second_kind=S(w, basis)
+            p=P(w, basis)
+            e=exp_shuffleConcat(tensorProduct(coefficient_of_the_second_kind,p), basis.m)
+            o=shuffleConcatProduct(e, o, basis.m)
+        return o
+
+    with UseRationalContext():
+        lhs = sum_word_tensor_word(basis.d, basis.m)
+        rhs1 = defining_equation_for_coefficients_first_kind_rhs(basis)
+        assert rhs1==lhs
+
+        #This is just Reutenauer's Corollary 5.6 that
+        #sum_word_tensor_word is the decreasing product of the exponentials
+        #of S_h tensor P_h
+        rhs2 = defining_equation_for_coefficients_second_kind_rhs(basis)
+        assert rhs2==lhs
+
 def testSympy():
     from sympy.parsing.sympy_parser import parse_expr
     """A simple example of using symbolic coefficients"""
@@ -1868,6 +2044,9 @@ def test():
     assert len(bch)==5
     assert np.allclose(720*np.array(bch[4]),[1,4,-4,-1,-2,-6])
 
+    testSussman(HallBasis(2,6))
+    testCoordinates(HallBasis(2,6))
+
     #group stuff in the Lie group
     g1 = randomGrouplikeElt(2,5)
     g1inv = alpha(g1) #alpha is the inverse
@@ -1938,6 +2117,10 @@ def test():
 
     assert rightHalfShuffleProduct(p("12"),p("23"))==p("[2]1223+2123")
     assert rightHalfShuffleProduct(p(""),p("2"))+rightHalfShuffleProduct(p("2"),p(""))==shuffleProduct(p(""),p("2"))
+    assert rightHalfShuffleProduct(p("1+12"),p("1"))==p("11+121")
+    assert leftHalfShuffleProduct(p("12"),p("23"))==p("[2]1223+1232")
+    assert leftHalfShuffleProduct(p(""),p("2"))+leftHalfShuffleProduct(p("2"),p(""))==shuffleProduct(p(""),p("2"))
+    assert leftHalfShuffleProduct(p("1"),p("1+21"))==p("11+121")
 
     bas=TensorSpaceBasis.wordBasis(3,3)
     parts=[p("1+123"),p("[3]+[3]12"),p("12")]
