@@ -183,7 +183,7 @@ class Elt:
         else:
             formatString = "[{:."+str(dp)+"g}]"
         def item(i,j):
-            number = isinstance(j,(float,sympy.Float, int))
+            number = isinstance(j,(float, sympy.Number, int))
             if number and math.fabs(j)<tol:
                 return ""
             sign = ("+" if (not number or j>=0) else "-")
@@ -1206,6 +1206,18 @@ def lessExpressionStandardHall(a,b):
          return lessExpressionStandardHall(a[1],b[1])
     return lessExpressionStandardHall(a[0],b[0])
 
+#This is quite like lessExpressionStandardHall for low levels.
+#The corresponding Hall bases agree up to level 8.
+#If d is 2, they agree up to level 10.
+def lessExpressionLevelThenAlph(a,b):
+    aa=tuple(foliage_iter(a))
+    bb=tuple(foliage_iter(b))
+    laa=len(aa)
+    lbb=len(bb)
+    if laa!=lbb:
+        return lbb<laa
+    return aa<bb
+
 def nOfDerivedBasisElement(e):
     """If e is an element of a Hall basis 'compatible with the derived series',
        then it must be a member of some H_n. See section 5.3. Return that n.
@@ -1901,12 +1913,14 @@ def testPBWdual(words,basis):
 
 def testSussman(basis):
     """
-    Verify an identity from Hector Sussman's 1986 'A Product Expansion for the Chen Series'
-    and which can be seen in several papers in control theory papers, for the top level of the
-    given Hall basis.
-    The paper uses an older more restricted definition of Hall basis which is not needed.
-    In some papers it appears as saying some value for each Hall basis element (the coordinate of the
-    second kind / the dual PBW element) is a constant times the right half shuffle of the left and
+    Verify an identity from 'A Product Expansion for the Chen Series'
+    (Hector Sussman 1986) and which can be seen in several papers in
+    control theory, for the top level of the given Hall basis.
+    The paper uses an older more restricted definition of Hall basis
+    which is not needed.
+    In some papers it appears as saying some value for each Hall basis
+    element (the coordinate of the second kind / the dual PBW element)
+    is a constant times the right half shuffle of the left and
     right parts of the element.
     Here we keep the constant explicit.
     In the convention we use, it is the left half shuffle which is relevant.
@@ -1948,13 +1962,16 @@ def testCoordinates(basis):
     with UseRationalContext():
         lhs = sum_word_tensor_word(basis.d, basis.m)
         rhs1 = defining_equation_for_coefficients_first_kind_rhs(basis)
-        assert rhs1==lhs
+        assert lhs==rhs1
 
         #This is just Reutenauer's Corollary 5.6 that
         #sum_word_tensor_word is the decreasing product of the exponentials
         #of S_h tensor P_h
+        #It is also the main theorem of Sussman 1986, once you've
+        #worked out how our S is like its C
+        #and accounted for convention differences.
         rhs2 = defining_equation_for_coefficients_second_kind_rhs(basis)
-        assert rhs2==lhs
+        assert lhs==rhs2
 
 def testSympy():
     from sympy.parsing.sympy_parser import parse_expr
