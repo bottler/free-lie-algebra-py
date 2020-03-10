@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.linalg
 import functools, sys, os, math, itertools, operator, six
-from sympy.utilities.iterables import multiset_permutations, ordered_partitions, kbins
+from sympy.utilities.iterables import multiset_permutations, partitions, ordered_partitions, kbins
 from sympy.ntheory import mobius, divisors
 from sympy import Rational
 import sympy
@@ -1786,6 +1786,39 @@ def lcm_array(x, rounding=2, tol=1e-7):
         out = np.array([round(i,rounding) for i in out])
     return out
 
+def enumerate_anagram_sets(d, m, letter_order_matters=False, use_all_letters=None):
+    """
+    Yield each distinctly interesting anagram set at level m,
+    as a d-tuple of nonnegative integers summing to m, giving the
+    number of each letter.
+
+    If not letter_order_matters, returns decreasing tuples.
+    If letter_order_matters, (1,2,0) and (2,1,0) are different.
+    In all cases, (1,2,0) and (0,1,2) are the same. The difference between
+    them is invariably uninteresting.
+
+    If use_all_letters is:
+    True: all letters must be used
+    None: at least two letters must be used
+    False: anything allowed. Even just a repeated letter like (3,0) is considered.
+           Algebraically this is usually boring.
+    """
+    from itertools import repeat, islice, chain
+    min_size=1 if use_all_letters is not None else 2
+    allowed_sizes=[d] if use_all_letters else range(min_size, d+1)
+    if not letter_order_matters:
+        for size, part in partitions(m, m=d, size=True):
+            if size in allowed_sizes:
+                gen=(repeat(key,part[key]) for key in sorted(part, reverse=True))
+                yield tuple(islice(chain(*gen, repeat(0)), d))
+    else:
+        if m<d:
+            return
+        for size in allowed_sizes:
+            rest = (0,) * (d-size)
+            for i in kbins(list(range(m)), size):
+                yield tuple(chain((len(j) for j in i), rest))
+
 class MaxLevelContext():
     """Several functions have a maxLevel parameter.
     (concatenationProduct, shuffleProduct, log, log1p, exp and their friends)
@@ -1972,6 +2005,31 @@ def testCoordinates(basis):
         #and accounted for convention differences.
         rhs2 = defining_equation_for_coefficients_second_kind_rhs(basis)
         assert lhs==rhs2
+
+def test_enumerate_anagram_sets():
+    e=enumerate_anagram_sets
+    d,m=3,4
+    a01={(2,1,1)}
+    assert set(e(d,m,False,True))==a01
+    a02=a01|{(3,1,0),(2,2,0)}
+    assert set(e(d,m,False,None))==a02
+    a03=a02|{(4,0,0)}
+    assert set(e(d,m,False,False))==a03
+    a11=a01|{(1,2,1),(1,1,2)}
+    assert set(e(d,m,True,True))==a11
+    a12=a11|a02|{(1,3,0)}
+    assert set(e(d,m,True,None))==a12
+    a13=a12|{(4,0,0)}
+    assert set(e(d,m,True,False))==a13
+
+    for d,m in [(4,2), (4,1)]:
+        assert 0 == len(list(e(d,m,False,True)))
+        assert 0 == len(list(e(d,m,True,True)))
+        assert 0 == len(list(e(d,m,True,False)))
+        assert 0 == len(list(e(d,m,True,None)))
+        a= {(1,1,0,0)} if m==2 else set()
+        assert a==set(e(d,m,False))
+        assert a|{(m,0,0,0)}==set(e(d,m,False,False))
 
 def testSympy():
     from sympy.parsing.sympy_parser import parse_expr
@@ -2186,7 +2244,7 @@ def test():
 
     testSympy()
     testRational()
-    
+    test_enumerate_anagram_sets()
     
 class TestFLA(unittest.TestCase):
     def testall(self):
