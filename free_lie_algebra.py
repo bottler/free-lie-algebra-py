@@ -169,6 +169,13 @@ class Elt:
                     if l<k:
                         l=k
         return l
+    def highest_level(self, eps=1e-9):
+        """return the highest level we have data in, or -1 if we are basically zero."""
+        for i in range(len(self.data),0,-1):
+            for k, v in self.data[i-1].items():
+                if math.fabs(v)>eps:
+                    return i-1
+        return -1
     def pretty(self, dp=15, tol=None, maxLevel=None):
         """a pretty string representation"""
         return self._pretty(dp=dp, tol=tol, p=None, maxLevel=maxLevel)
@@ -1336,14 +1343,25 @@ class HallBasis:
         return out
     
     def indicesOfHallWords(self, m):
-        """returns an array of length d**m where elements which are HallWords correspond to their index
-        and all other indices are -1"""
+        """
+        Labels the words of length m, in alphabetical order.
+        Returns a labels array of int of length d**m.
+        Words which are HallWords are labelled with their index
+        and all other labels are -1.
+        If m is supplied as -1, all levels are provided.
+        """
         assert 0<m<=self.m
         if m==1:
             return np.arange(self.d)
         d=self.foliageLookup(m)
         out=[d.get(wd,-1) for wd in wordIter(self.d,m,topOnly=True,asNumbers=True)]
         return np.array(out)
+
+    def indicesOfHallWordsInAllLevels(self):
+        out = [[-1]]
+        for m in range(1,self.m+1):
+            out.append(self.indicesOfHallWords(m))
+        return np.concatenate(out)
 
     def indicesOfAnagramSet(self, counts):
         """return the indices (in the relevant level) of elements which have the homogeneity given by counts"""
@@ -1369,6 +1387,17 @@ class HallBasis:
         o=[i for dat in self.data for i in dat]
         o.sort(key=self.sortKey)
         return o
+
+def arbitraryEltSympy(d, m, symbol='x'):
+    """return an arbitrary Elt with Sympy coefficients"""
+    assert 1<d<10
+    o = []
+    for level in range(m+1):
+        a = {}
+        for w in wordIter(d,level, topOnly=True):
+            a[Word(w)]=sympy.var(symbol+"_"+"".join(w))
+        o.append(a)
+    return Elt(o)
 
 def arbitraryLieEltSympy(basis, m=None, symbol='x'):
     """return an arbitrary Lie element with Sympy coefficients"""
@@ -1617,7 +1646,7 @@ class TensorSpaceBasis:
             assert isinstance(b,Elt), b
         sources = np.array([self.fromElt(b) for b in l])
         targets = self.fromElt(x) if single else np.transpose([self.fromElt(i) for i in x])
-        v=scipy.linalg.lstsq(sources.T,targets)
+        v = scipy.linalg.lstsq(sources.T, targets, cond=1e-8)
         if not allowFailure:
             if v[2]<len(l):
                 #we are about to assert anyway. Let's be helpful and give some more info
@@ -1636,7 +1665,11 @@ class TensorSpaceBasis:
                         print(i, round(j,3), l[i].pretty())
 
             assert v[2]==len(l)#l is not LI
-            assert np.amax(v[1])<1e-8#not in span
+            max_discrepancy = np.amax(v[1])
+            if max_discrepancy>=1e-8:
+                #about to assert anyway
+                print("not in span")
+            assert max_discrepancy<1e-8#not in span
         return v[0] if single else [v[0][:,i] for i in range(v[0].shape[1])]
     def matrix(self,l):
         """return the matrix of the elts in l, 
@@ -2245,6 +2278,8 @@ def test():
     testSympy()
     testRational()
     test_enumerate_anagram_sets()
+
+    #Lie elements are orthogonal to all shuffles.
     
 class TestFLA(unittest.TestCase):
     def testall(self):
