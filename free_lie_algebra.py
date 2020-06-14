@@ -498,7 +498,7 @@ def shuffleProductMany(a, maxLevel=None):
         lambda x,y : shuffleProduct(x,y,maxLevel),a)
 
 def rightHalfShuffleProduct(a,b,maxLevel=None):
-    """For two words a and b, their rightHalfShuffle is those shuffles
+    r"""For two words a and b, their rightHalfShuffle is those shuffles
     of a and b for which the last element is the last element of b.
     This is extended to a bilinear operation on Elts.
     If c is a letter then rightHalfShuffleProduct(a,bc) is (a shuffle b)c.
@@ -539,7 +539,7 @@ def rightHalfShuffleProduct(a,b,maxLevel=None):
     return Elt(out)
 
 def leftHalfShuffleProduct(a,b,maxLevel=None):
-    """For two words a and b, their leftHalfShuffle is those shuffles
+    r"""For two words a and b, their leftHalfShuffle is those shuffles
     of a and b for which the first element is the first element of a.
     This is extended to a bilinear operation on Elts.
     If c is a letter then leftHalfShuffleProduct(ab,c) is a(b shuffle c).
@@ -600,7 +600,7 @@ def tensorProduct(*args):
     return EltElt(out,n_out)
 
 def tensorProductFunctions(*args, **kwargs):
-    """if f,g,h takes Elts and returns Elts or EltElts then
+    r"""if f,g,h takes Elts and returns Elts or EltElts then
     tensorProductFunctions(f,g,h) is the function f\otimes g\otimes h.
     If some of f,g or h return EltElt with n>1, then provide a named argument n as the tensor exponent
     we use to return in the case of zero input.
@@ -770,7 +770,7 @@ def exp(a,maxLevel=None,useRational=None):
     return Elt(d)
 
 def log1p_shuffleConcat(a,maxLevel=None):
-    """returns the tensor logarithm of (1+a) in the algebra {\mathcal A}
+    r"""returns the tensor logarithm of (1+a) in the algebra {\mathcal A}
     if maxLevel is not given, only go up to the maximum level already in a
      - there is no other way to pick a maximum level.
     """
@@ -858,7 +858,7 @@ def deltaOfLetter(letter,p):
     return EltElt({i:o for i in tuples},p)
 
 def delta(a,p=2):#sh*, adjoint of sh
-    """delta(x) is $\delta(x)$. delta(x,p) is $\delta_p(x)$
+    r"""delta(x) is $\delta(x)$. delta(x,p) is $\delta_p(x)$
        deshuffle coproduct: if w is a word, delta(w) is the sum of the pairs
        of words (in both orders) of which w is a shuffle of the pair.
        delta is thus clearly cocommutative
@@ -884,27 +884,28 @@ def deltabar(a):
     out={(i,Word(j.letters[::-1])):v*((-1)**len(j.letters)) for (i,j),v in d.data.items()}
     return EltElt(out,2)
 
+#copied from sympy kbins but allow empty bins
+def _partition(lista, bins):
+    #  EnricoGiampieri's partition generator from
+    #  http://stackoverflow.com/questions/13131491/
+    #  partition-n-items-into-k-bins-in-python-lazily
+    if bins == 1:
+        yield [lista]
+    elif bins > 1:
+        for i in range(0, len(lista)+1):
+            for part in _partition(lista[i:], bins - 1):
+                if len([lista[:i]] + part) == bins:
+                    yield [lista[:i]] + part
+
 def deltadash(a,p=2): #aka conc*, p27, deconcatenation coproduct
-    """deltadash(x) is $\delta'(x)$. delta(x,p) is $\delta'_p(x)$"""
+    r"""deltadash(x) is $\delta'(x)$. delta(x,p) is $\delta'_p(x)$"""
     assert isinstance(a,Elt), a
     assert isinstance(p,int), p
     
-    #copied from sympy kbins but allow empty bins
-    def partition(lista, bins):
-        #  EnricoGiampieri's partition generator from
-        #  http://stackoverflow.com/questions/13131491/
-        #  partition-n-items-into-k-bins-in-python-lazily
-        if bins == 1:
-            yield [lista]
-        elif bins > 1:
-            for i in range(0, len(lista)+1):
-                for part in partition(lista[i:], bins - 1):
-                    if len([lista[:i]] + part) == bins:
-                        yield [lista[:i]] + part
     out=dict()
     for x in a.data:
         for k,v in x.items():
-            for i in partition(k.letters,p):
+            for i in _partition(k.letters,p):
                 k2=tuple(Word(j) for j in i)
                 _increment_value_in_dict_to_coeff(out,k2,v)
     return EltElt(out,p)
@@ -991,7 +992,7 @@ def D_inv(a):
     return Elt(out)
 
 def conc(a):
-    """This is both conc and conc_p, as we don't assert a.n==2 .
+    r"""This is both conc and conc_p, as we don't assert a.n==2 .
     If you think of Elts as the tensor space of a vector space V,
     then this is the obvious morphism from external-tensor-product
     (say \boxtimes) powers (i.e. EltElt) to internal-tensor-product
@@ -1129,7 +1130,7 @@ def pi1adjointOfWord(word):
 #So the linear function on signatures which returns element w of the log signature is
 #f(X) = dotprod(pistar(S(w)),X)
 def pi1adjoint(a):
-    """adjoint of pi1
+    r"""adjoint of pi1
     This is what is known as $\pi_1^*$ in Section 6.2 (p129) of Reutenauer.
     It is what Eric Gehrig and Matthias Kawski call $\pi_1'$ in their
     'A Hopf-Algebraic Formula for Compositions of Noncommuting Flows' """
@@ -1143,7 +1144,7 @@ def pi1adjoint(a):
     return Elt(out)    
 
 def pi(a,n):
-    """\pi_n(a)
+    r"""\pi_n(a)
     NB: This is not the function for projecting to the nth level, or up to the nth level, 
     which some authors call \pi_n. For that, use the restrictedToLevel or truncatedToLevel 
     member functions of Elt."""
@@ -1696,11 +1697,11 @@ class TensorSpaceBasis:
         from itertools import product, chain
         alphabet=list(range(1,self.d+1))
         target=list(chain.from_iterable([(i,)*j for i,j in zip(alphabet,counts)]))
-        for i,j in enumerate(itertools.product(alphabet,repeat=level)):
+        for i,j in enumerate(product(alphabet,repeat=level)):
             if target == sorted(j):
                 o.append(i)
         if not singleLevelOnly:
-            offset = indexOfLevelStart(level)
+            offset = self.indexOfLevelStart(level)
             return [offset + i for i in o]
         return o                
 
@@ -1821,14 +1822,15 @@ def lcm_array(x, rounding=2, tol=1e-7):
 
 def enumerate_anagram_sets(d, m, letter_order_matters=False, use_all_letters=None):
     """
-    Yield each distinctly interesting anagram set at level m,
+    Yield each anagram set at level m,
     as a d-tuple of nonnegative integers summing to m, giving the
     number of each letter.
 
-    If not letter_order_matters, returns decreasing tuples.
-    If letter_order_matters, (1,2,0) and (2,1,0) are different.
-    In all cases, (1,2,0) and (0,1,2) are the same. The difference between
-    them is invariably uninteresting.
+    If letter_order_matters is
+    False: returns decreasing tuples.
+    None:  (1,2,0) and (2,1,0) are both returned. All zeros are at the end.
+    True: Every order is returned, so (1,2,0) and (0,1,2) are both returned.
+                   Algebraically this is usually boring.
 
     If use_all_letters is:
     True: all letters must be used
@@ -1839,14 +1841,28 @@ def enumerate_anagram_sets(d, m, letter_order_matters=False, use_all_letters=Non
     from itertools import repeat, islice, chain
     min_size=1 if use_all_letters is not None else 2
     allowed_sizes=[d] if use_all_letters else range(min_size, d+1)
-    if not letter_order_matters:
+    if letter_order_matters is False:
         for size, part in partitions(m, m=d, size=True):
             if size in allowed_sizes:
                 gen=(repeat(key,part[key]) for key in sorted(part, reverse=True))
                 yield tuple(islice(chain(*gen, repeat(0)), d))
+    elif m==1:
+        if use_all_letters is False or d==1:
+            yield (m,)+(0,)*(d-1)
+            if letter_order_matters is True:
+                for init in range(1,d):
+                    yield (0,)*init + (1,) + (0,)*(d-1-init)
+    elif letter_order_matters is True:
+        f = kbins if use_all_letters is True else _partition
+        for i in f(list(range(m)),d):
+            t = tuple(len(j) for j in i)
+            if use_all_letters is not None:
+                yield t
+            else:
+                active=sum(1 for x in t if x>0)
+                if active>1:
+                    yield t
     else:
-        if m<d:
-            return
         for size in allowed_sizes:
             rest = (0,) * (d-size)
             for i in kbins(list(range(m)), size):
@@ -2041,7 +2057,7 @@ def testCoordinates(basis):
 
 def test_enumerate_anagram_sets():
     e=enumerate_anagram_sets
-    d,m=3,4
+    d, m = 3, 4
     a01={(2,1,1)}
     assert set(e(d,m,False,True))==a01
     a02=a01|{(3,1,0),(2,2,0)}
@@ -2049,20 +2065,31 @@ def test_enumerate_anagram_sets():
     a03=a02|{(4,0,0)}
     assert set(e(d,m,False,False))==a03
     a11=a01|{(1,2,1),(1,1,2)}
+    assert set(e(d,m,None,True))==a11
     assert set(e(d,m,True,True))==a11
     a12=a11|a02|{(1,3,0)}
-    assert set(e(d,m,True,None))==a12
+    assert set(e(d,m,None,None))==a12
+    a22=a12|{(0,1,3),(0,3,1),(1,0,3),(3,0,1),(2,0,2),(0,2,2)}
+    assert set(e(d,m,True,None))==a22
     a13=a12|{(4,0,0)}
-    assert set(e(d,m,True,False))==a13
+    assert set(e(d,m,None,False))==a13
+    a23=a22|{(4,0,0),(0,4,0),(0,0,4)}
+    assert set(e(d,m,True,False))==a23
 
     for d,m in [(4,2), (4,1)]:
         assert 0 == len(list(e(d,m,False,True)))
+        assert 0 == len(list(e(d,m,None,True)))
         assert 0 == len(list(e(d,m,True,True)))
-        assert 0 == len(list(e(d,m,True,False)))
-        assert 0 == len(list(e(d,m,True,None)))
         a= {(1,1,0,0)} if m==2 else set()
         assert a==set(e(d,m,False))
-        assert a|{(m,0,0,0)}==set(e(d,m,False,False))
+        assert a==set(e(d,m,None))
+        aa=a|{(1,0,1,0),(1,0,0,1),(0,1,1,0),(0,1,0,1),(0,0,1,1)} if m==2 else set()
+        assert aa==set(e(d,m,True))
+        b=a|{(m,0,0,0)}
+        assert b==set(e(d,m,False,False))
+        assert b==set(e(d,m,None,False))
+        bb=aa|b|{(0,m,0,0),(0,0,m,0),(0,0,0,m)}
+        assert bb==set(e(d,m,True,False))
 
 def testSympy():
     from sympy.parsing.sympy_parser import parse_expr
@@ -2236,6 +2263,7 @@ def test():
     assert np.allclose(bas.inTermsOf(r3,parts),[1,3,-8])
     assert bas.rank(parts)==3
     assert [1,3,9]==bas.indicesOfAnagramSet([2,1], True)
+    assert [14,16,22]==bas.indicesOfAnagramSet([2,1], False)
     bas2=TensorSpaceBasis.fromFunctionAndHallBasis(P,HallBasis(3,5),m=4)
     for i, j in enumerate([[0],[0,1,0],[0]*9]):
         assert np.allclose(bas.fromElt(C,m=i),j)
