@@ -77,6 +77,7 @@ def _getMaxLevel(level):
 
 class Word:
     """The alphabet is int. This class represents an immutable word on the alphabet"""
+    __slots__=["letters"]
     def __init__(self, letters):
         self.letters=tuple(int(i) for i in letters)
     def __hash__(self):
@@ -99,6 +100,7 @@ class Elt:
        data is a list (one for each level) of dictionaries word->coefficient.
        The * operator is only used for multiplication by a scalar
     """
+    __slots__=["data"]
     def __init__(self,data):
         assert type(data)==list, data
         self.data=data
@@ -275,6 +277,7 @@ def randomElt(d,m,maxi=None):
 class EltElt:
     """An element of the tensor product of the tensor algebra n times with itself.
        data is a dictionary of (word,word,...)->coefficient"""
+    __slots__=["n","data"]
     def __init__(self, data, n):
         self.n=n
         assert type(data)==dict, data
@@ -542,7 +545,7 @@ def leftHalfShuffleProduct(a,b,maxLevel=None):
     r"""For two words a and b, their leftHalfShuffle is those shuffles
     of a and b for which the first element is the first element of a.
     This is extended to a bilinear operation on Elts.
-    If c is a letter then leftHalfShuffleProduct(ab,c) is a(b shuffle c).
+    If a is a letter then leftHalfShuffleProduct(ab,c) is a(b shuffle c).
     Usually (a shuffle b) == leftHalfShuffleProduct(a,b)+leftHalfShuffleProduct(b,a) (*)
     In the current implementation, leftHalfShuffleProduct(a,b) is zero if a is the empty word,
     even if b is the empty word.
@@ -1172,6 +1175,8 @@ def foliage_iter(x):
 def foliageFromTree(tup):
     return "".join(str(i) for i in foliage_iter(tup))
 
+def foliage_from_tree_as_tuple_of_ints(tup):
+    return tuple(foliage_iter(tup))
 
 def printTreeAsLieBrackets(tup):
     if len(tup)==1:
@@ -1434,7 +1439,9 @@ def P(w, basis):
 def S(w, basis):
     """Dual PBW basis element, p108"""
     assert isinstance(basis, HallBasis), basis
-    assert type(w) in (tuple,str), w
+    assert type(w) in (tuple,str, Word), w
+    if isinstance (w, Word):
+        w=w.letters
     assert len(w)<=basis.m
     if type(w)==str:
         w=tuple(int(i) for i in w)
@@ -1672,17 +1679,30 @@ class TensorSpaceBasis:
                 print("not in span")
             assert max_discrepancy<1e-8#not in span
         return v[0] if single else [v[0][:,i] for i in range(v[0].shape[1])]
-    def matrix(self,l):
-        """return the matrix of the elts in l, 
-           using our basis"""
+    def matrix(self,l, m=None):
+        """
+        return the matrix of the elts in l,
+           using our basis.
+        If m is given, use only that level.
+        """
         for b in l:
             assert isinstance(b,Elt), b
-        sources = np.array([self.fromElt(b) for b in l])
+        sources = np.array([self.fromElt(b, m=m) for b in l])
         return sources
     def rank(self,l):
         """return the dimension of the span of the elts in l, 
            using our basis"""
         return np.linalg.matrix_rank(self.matrix(l))
+
+    def basis_for_set(self, l, m=None):
+        """
+        return a LI list of elts which span the same space as
+        the elts in l.
+        If m is supplied, only look at that level
+        """
+        mat = self.matrix(l, m=m)
+        reduced_mat = scipy.linalg.orth(mat.T)
+        return [self.toElt(b, m=m) for b in reduced_mat.T]
 
     def indicesOfAnagramSet(self, counts, singleLevelOnly):
         """return the indices of elements which have the homogeneity given by counts"""
@@ -1859,7 +1879,7 @@ def enumerate_anagram_sets(d, m, letter_order_matters=False, use_all_letters=Non
             if use_all_letters is not None:
                 yield t
             else:
-                active=sum(1 for x in t if x>0)
+                active=sum(x>0 for x in t)
                 if active>1:
                     yield t
     else:
